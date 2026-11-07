@@ -6,3 +6,6 @@
 /build/
 /.xmake/
 
+
+# Visual Studio temporary files
+/.vs/
