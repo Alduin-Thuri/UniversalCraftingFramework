@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Universal Crafting Framework/Universal Crafting Framework.vcxproj" Id="15ca0630-02a6-4217-9c62-6e0c9f9c7874" />
+</Solution>
