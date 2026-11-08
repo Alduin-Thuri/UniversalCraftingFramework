@@ -1,3 +1,4 @@
+#include "QuestRecipeGuard.h"
 #include <RE/Skyrim.h>
 #include <SKSE/SKSE.h>
 
@@ -18,6 +19,7 @@ namespace
         RE::ContainerObject* entry{};
         RE::TESBoundObject* item{};
         std::int32_t original{};
+        bool protectedRecipe{};
     };
 
     std::vector<Ingredient> g_ingredients;
@@ -63,7 +65,7 @@ namespace
         for (const auto& ingredient : g_ingredients) {
             auto [it, inserted] = owned.try_emplace(ingredient.item, 0);
             if (inserted) it->second = player->GetItemCount(ingredient.item);
-            const auto wanted = std::clamp(it->second, std::int32_t{ 0 }, ingredient.original);
+            const auto wanted = (ingredient.protectedRecipe ? ingredient.original : std::clamp(it->second, std::int32_t{ 0 }, ingredient.original));
             if (ingredient.entry->count != wanted) {
                 ingredient.entry->count = wanted;
                 ++changed;
@@ -87,7 +89,7 @@ namespace
             item.constructibleObject->requiredItems.ForEachContainerObject([&](RE::ContainerObject& entry) {
                 if (entry.obj && entry.count > 0) {
                     const auto index = g_ingredients.size();
-                    g_ingredients.push_back({ &entry, entry.obj, entry.count });
+                    g_ingredients.push_back({ &entry, entry.obj, entry.count , UniversalCraftingFramework::QuestRecipeGuard::IsProtected(item.constructibleObject) });
                     g_byItem[entry.obj->GetFormID()].push_back(index);
                 }
                 return RE::BSContainer::ForEachResult::kContinue;
@@ -114,7 +116,7 @@ namespace
             const auto owned = player->GetItemCount(item);
             for (auto index : it->second) {
                 auto& ingredient = g_ingredients[index];
-                const auto wanted = std::clamp(owned, std::int32_t{ 0 }, ingredient.original);
+                const auto wanted = (ingredient.protectedRecipe ? ingredient.original : std::clamp(owned, std::int32_t{ 0 }, ingredient.original));
                 if (ingredient.entry->count != wanted) {
                     ingredient.entry->count = wanted;
                     changed = true;
