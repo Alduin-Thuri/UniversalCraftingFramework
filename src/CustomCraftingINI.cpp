@@ -1,4 +1,3 @@
-#include "QuestRecipeGuard.h"
 #include <RE/Skyrim.h>
 #include <SKSE/SKSE.h>
 
@@ -21,7 +20,6 @@ namespace
         RE::ContainerObject* entry{};
         RE::TESBoundObject* item{};
         std::int32_t original{};
-        bool protectedRecipe{};
     };
 
     std::unordered_set<std::string> g_plugins;
@@ -29,7 +27,6 @@ namespace
     std::unordered_set<RE::BGSConstructibleObject*> g_indexed;
     std::vector<Ingredient> g_ingredients;
     std::unordered_map<RE::FormID, std::vector<std::size_t>> g_byItem;
-    std::unordered_set<RE::FormID> g_dirtyItems;
     bool g_active = false;
     bool g_queued = false;
     std::uint64_t g_generation = 0;
@@ -53,9 +50,28 @@ namespace
     void LoadConfig()
     {
         constexpr auto path = "Data/SKSE/Plugins/CustomCraftingINI.ini";
+        // Generate the INI on first launch without overwriting user settings.
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec) && !ec) {
+            std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+            if (!ec) {
+                std::ofstream created(path, std::ios::out | std::ios::trunc);
+                if (created) {
+                    created << "; Universal Crafting Framework - Custom Crafting INI\n"
+                               "; Generated automatically. Restart Skyrim after editing.\n\n"
+                               "[Settings]\nEnabled=true\n\n"
+                               "[Plugin]\n"
+                               "; Add installed ESP/ESM/ESL names, one per line.\n"
+                               "; LC_BuildYourNobleHouse.esp\n";
+                    created.close();
+                    if (created) SKSE::log::info("[CustomCraftingINI] Generated default INI: {}", path);
+                }
+            }
+            if (ec) SKSE::log::error("[CustomCraftingINI] Cannot create INI directory: {}", ec.message());
+        }
         std::ifstream file(path);
         if (!file) {
-            SKSE::log::warn("[CustomCraftingINI] INI not found: {}. Module inactive.", path);
+            SKSE::log::warn("[CustomCraftingINI] Cannot read/create INI: {}. Module inactive.", path);
             return;
         }
         std::string section;
@@ -118,7 +134,6 @@ namespace
         g_byItem.clear();
         g_indexed.clear();
         g_keywords.clear();
-        g_dirtyItems.clear();
         g_active = false;
         g_queued = false;
     }
@@ -143,7 +158,7 @@ namespace
             recipe->requiredItems.ForEachContainerObject([&](RE::ContainerObject& entry) {
                 if (entry.obj && entry.count > 0) {
                     const auto index = g_ingredients.size();
-                    g_ingredients.push_back({ &entry, entry.obj, entry.count , UniversalCraftingFramework::QuestRecipeGuard::IsProtected(recipe) });
+                    g_ingredients.push_back({ &entry, entry.obj, entry.count });
                     g_byItem[entry.obj->GetFormID()].push_back(index);
                 }
                 return RE::BSContainer::ForEachResult::kContinue;
@@ -159,8 +174,6 @@ namespace
         return added;
     }
 
-    // Initial opening: query each unique material once. Later updates use
-    // ApplyChanged() instead, avoiding a full material pass on every event.
     bool Apply(RE::CraftingSubMenus::ConstructibleObjectMenu* menu)
     {
         auto* player = RE::PlayerCharacter::GetSingleton();
@@ -171,45 +184,11 @@ namespace
             if (!ingredient.entry || !ingredient.item) continue;
             auto [it, inserted] = counts.try_emplace(ingredient.item, 0);
             if (inserted) it->second = player->GetItemCount(ingredient.item);
-            const auto wanted = (ingredient.protectedRecipe ? ingredient.original : std::clamp(it->second, std::int32_t{0}, ingredient.original));
+            const auto wanted = std::clamp(it->second, std::int32_t{0}, ingredient.original);
             if (ingredient.entry->count != wanted) {
                 ingredient.entry->count = wanted;
                 changed = true;
             }
-        }
-        if (changed) menu->UpdateConstructibleList();
-        return changed;
-    }
-
-    // Refresh only entries whose material actually changed, plus entries
-    // belonging to recipes newly discovered during this inventory event.
-    bool ApplyChanged(RE::CraftingSubMenus::ConstructibleObjectMenu* menu,
-        const std::unordered_set<RE::FormID>& dirty, std::size_t firstNewEntry)
-    {
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!menu || !player) return false;
-        std::unordered_map<RE::TESBoundObject*, std::int32_t> counts;
-        bool changed = false;
-        auto update = [&](std::size_t index) {
-            auto& ingredient = g_ingredients[index];
-            if (!ingredient.entry || !ingredient.item) return;
-            auto [it, inserted] = counts.try_emplace(ingredient.item, 0);
-            if (inserted) it->second = player->GetItemCount(ingredient.item);
-            const auto wanted = (ingredient.protectedRecipe ? ingredient.original : std::clamp(it->second, std::int32_t{0}, ingredient.original));
-            if (ingredient.entry->count != wanted) {
-                ingredient.entry->count = wanted;
-                changed = true;
-            }
-        };
-
-        for (auto id : dirty) {
-            const auto it = g_byItem.find(id);
-            if (it == g_byItem.end()) continue;
-            for (auto index : it->second) update(index);
-        }
-        for (std::size_t index = firstNewEntry; index < g_ingredients.size(); ++index) {
-            // Newly added entries may already have been covered by dirty IDs.
-            if (!dirty.contains(g_ingredients[index].item->GetFormID())) update(index);
         }
         if (changed) menu->UpdateConstructibleList();
         return changed;
@@ -243,23 +222,12 @@ namespace
     void OnInventory()
     {
         g_queued = false;
-        auto dirty = std::move(g_dirtyItems);
-        g_dirtyItems.clear();
         if (!g_active) return;
         auto* menu = GetMenu();
         if (!menu) return;
-
-        // Skyrim may reveal another building stage after an inventory event.
-        // Inspect visible recipes, but only index all COBJ records if a NEW
-        // bench keyword appears (existing IndexNew() behaviour).
-        const auto firstNewEntry = g_ingredients.size();
         const auto added = IndexNew(menu);
-        if (dirty.empty() && firstNewEntry == g_ingredients.size()) return;
-
-        const auto changed = ApplyChanged(menu, dirty, firstNewEntry);
-        if (added || changed) {
-            SKSE::log::info("[CustomCraftingINI] LiveSync: new recipes={}, material counts changed={}", added, changed);
-        }
+        const auto changed = Apply(menu);
+        SKSE::log::info("[CustomCraftingINI] LiveSync: new recipes={}, material counts changed={}", added, changed);
     }
 
     class MenuListener final : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
@@ -288,13 +256,11 @@ namespace
         RE::BSEventNotifyControl ProcessEvent(const RE::TESContainerChangedEvent* event,
             RE::BSTEventSource<RE::TESContainerChangedEvent>*) override
         {
-            if (!event || !g_active) return RE::BSEventNotifyControl::kContinue;
+            if (!event || !g_active || g_queued) return RE::BSEventNotifyControl::kContinue;
             auto* player = RE::PlayerCharacter::GetSingleton();
             if (!player || (event->oldContainer != player->GetFormID() &&
                             event->newContainer != player->GetFormID()))
                 return RE::BSEventNotifyControl::kContinue;
-            if (g_byItem.contains(event->baseObj)) g_dirtyItems.insert(event->baseObj);
-            if (g_queued) return RE::BSEventNotifyControl::kContinue;
             if (auto* tasks = SKSE::GetTaskInterface()) {
                 g_queued = true;
                 const auto token = g_generation;
