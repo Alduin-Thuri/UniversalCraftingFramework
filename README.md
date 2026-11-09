@@ -16,6 +16,33 @@ It aims to extend vanilla crafting functionality without requiring an ESP or ESL
 - Automatically refresh supported crafting menus when material availability changes.
 - Preserve vanilla perk and quest conditions.
 
+### Extra Smelter Recipes
+
+- Adds 14 optional built-in smelter outputs: 12 Soul Gem variants, Dragon Bones and Dragon Scales.
+- Supports custom outputs from Skyrim.esm and installed ESP/ESM/ESL plugins through `SmelterExtraRecipes.ini`.
+- `IncludeDefaultRecipes` controls only the 14 added outputs; it does not remove vanilla or modded smelter recipes.
+- `CraftQuantity` controls the number of items produced per craft (1–32767).
+- Extra recipes do not require materials; duplicate custom outputs are skipped.
+
+### Configuration
+
+The DLL automatically creates missing `Data/SKSE/Plugins/SmelterExtraRecipes.ini` and `Data/SKSE/Plugins/CustomCraftingINI.ini` files on launch. Existing INIs are preserved. Restart Skyrim after editing them.
+
+`CustomCraftingINI.ini` requires the user to list the desired plugin names under `[Plugin]`; its generated list is empty by default.
+
+Example `SmelterExtraRecipes.ini`:
+
+```ini
+[Settings]
+Enabled=true
+IncludeDefaultRecipes=true
+CraftQuantity=1
+
+[CustomRecipes]
+; Skyrim.esm|0005ACE4
+; MyItems.esp|00000800
+```
+
 ### Supported Crafting Stations
 
 - **Forge** – Weapon and armour crafting
@@ -97,9 +124,9 @@ The local `lib`, `build`, `.xmake` and `.vs` directories are excluded from versi
 
 ## Development Status
 
-**Current version: 1.1.0 Beta**
+**Current source: post-1.1.0 Beta (unreleased)**
 
-The core functionality is operational, but testing is ongoing.
+The core functionality is operational, but testing is ongoing. The extra Smelter recipes, crafting quantities and multiple custom item categories have been tested in-game. Automatic INI regeneration and external-plugin custom outputs still require separate verification.
 
 Not every crafting station, modded recipe, or quest-related restriction has been fully verified.
 
