@@ -2,6 +2,7 @@
 #include <SKSE/SKSE.h>
 
 namespace UniversalCraftingFramework::Smelter { void Initialize(); }
+namespace UniversalCraftingFramework::SmelterExtraRecipes { void Initialize(); }
 namespace UniversalCraftingFramework::TanningRack { void Initialize(); }
 namespace UniversalCraftingFramework::Workbench { void Initialize(); }
 namespace UniversalCraftingFramework::Grindstone { void Initialize(); }
@@ -21,8 +22,12 @@ namespace
             return;
         }
 
-        SKSE::log::info("[UCF Diagnostic] kDataLoaded: eleven-module initialization beginning");
+        SKSE::log::info("[UCF Diagnostic] kDataLoaded: module initialization beginning");
         UniversalCraftingFramework::QuestRecipeGuard::Initialize();
+
+        SKSE::log::info("[UCF Diagnostic] BEFORE SmelterExtraRecipes");
+        UniversalCraftingFramework::SmelterExtraRecipes::Initialize();
+        SKSE::log::info("[UCF Diagnostic] AFTER SmelterExtraRecipes");
 
         SKSE::log::info("[UCF Diagnostic] BEFORE Smelter");
         UniversalCraftingFramework::Smelter::Initialize();
@@ -68,7 +73,7 @@ namespace
         UniversalCraftingFramework::StaffEnchanter::Initialize();
         SKSE::log::info("[UCF Diagnostic] AFTER StaffEnchanter");
 
-        SKSE::log::info("[UCF Diagnostic] All eleven modules initialized");
+        SKSE::log::info("[UCF Diagnostic] All modules initialized");
     }
 }
 
