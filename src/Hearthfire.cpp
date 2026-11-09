@@ -1,4 +1,3 @@
-#include "QuestRecipeGuard.h"
 #include <RE/Skyrim.h>
 #include <SKSE/SKSE.h>
 
@@ -20,7 +19,6 @@ namespace
         RE::ContainerObject* entry{};
         RE::TESBoundObject* item{};
         std::int32_t original{};
-        bool protectedRecipe{};
     };
 
     std::vector<Ingredient> g_ingredients;
@@ -76,6 +74,7 @@ namespace
     }
 
     // Only index recipes belonging to the Hearthfire keyword families.
+    // Quest/stage conditions remain untouched; only material counts are adjusted.
     // The vanilla menu decides which recipes are visible; this code never adds any.
     std::size_t IndexNewRecipes(RE::CraftingSubMenus::ConstructibleObjectMenu* menu)
     {
@@ -96,7 +95,7 @@ namespace
             recipe->requiredItems.ForEachContainerObject([&](RE::ContainerObject& entry) {
                 if (entry.obj && entry.count > 0) {
                     const auto index = g_ingredients.size();
-                    g_ingredients.push_back({ &entry, entry.obj, entry.count , UniversalCraftingFramework::QuestRecipeGuard::IsProtected(recipe) });
+                    g_ingredients.push_back({ &entry, entry.obj, entry.count });
                     g_byItem[entry.obj->GetFormID()].push_back(index);
                 }
                 return RE::BSContainer::ForEachResult::kContinue;
@@ -127,7 +126,7 @@ namespace
             if (!i.entry || !i.item || i.original <= 0) continue;
             auto [it, inserted] = owned.try_emplace(i.item, 0);
             if (inserted) it->second = player->GetItemCount(i.item);
-            const auto wanted = (i.protectedRecipe ? i.original : std::clamp(it->second, std::int32_t{0}, i.original));
+            const auto wanted = std::clamp(it->second, std::int32_t{0}, i.original);
             if (i.entry->count != wanted) {
                 i.entry->count = wanted;
                 changed = true;
@@ -194,7 +193,7 @@ namespace
             const auto owned = player->GetItemCount(g_ingredients[it->second.front()].item);
             for (auto index : it->second) {
                 auto& i = g_ingredients[index];
-                const auto wanted = (i.protectedRecipe ? i.original : std::clamp(owned, std::int32_t{0}, i.original));
+                const auto wanted = std::clamp(owned, std::int32_t{0}, i.original);
                 if (i.entry && i.entry->count != wanted) {
                     i.entry->count = wanted;
                     changed = true;
